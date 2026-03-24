@@ -51,6 +51,7 @@ This project focuses not only on functionality but also on demonstrating how mod
 
 ### 🔹 Explanation Output
 <img width="1920" height="1017" alt="Screenshot 2026-03-24 144712" src="https://github.com/user-attachments/assets/81f89c82-bb97-4bff-abb5-becce6f26b48" />
+<img width="1920" height="1020" alt="Screenshot 2026-03-23 235352" src="https://github.com/user-attachments/assets/e51639a3-fb9b-4397-964d-8cd8af1c8c32" />
 
 
 ## Future Improvements
