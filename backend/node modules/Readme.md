@@ -1,152 +1,138 @@
-# Bytes utility
+# combined-stream
 
-[![NPM Version][npm-image]][npm-url]
-[![NPM Downloads][downloads-image]][downloads-url]
-[![Build Status][ci-image]][ci-url]
-[![Test Coverage][coveralls-image]][coveralls-url]
+A stream that emits multiple other streams one after another.
 
-Utility to parse a string bytes (ex: `1TB`) to bytes (`1099511627776`) and vice-versa.
+**NB** Currently `combined-stream` works with streams version 1 only. There is ongoing effort to switch this library to streams version 2. Any help is welcome. :) Meanwhile you can explore other libraries that provide streams2 support with more or less compatibility with `combined-stream`.
+
+- [combined-stream2](https://www.npmjs.com/package/combined-stream2): A drop-in streams2-compatible replacement for the combined-stream module.
+
+- [multistream](https://www.npmjs.com/package/multistream): A stream that emits multiple other streams one after another.
 
 ## Installation
 
-This is a [Node.js](https://nodejs.org/en/) module available through the
-[npm registry](https://www.npmjs.com/). Installation is done using the
-[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
-
-```bash
-$ npm install bytes
+``` bash
+npm install combined-stream
 ```
 
 ## Usage
 
-```js
-var bytes = require('bytes');
+Here is a simple example that shows how you can use combined-stream to combine
+two files into one:
+
+``` javascript
+var CombinedStream = require('combined-stream');
+var fs = require('fs');
+
+var combinedStream = CombinedStream.create();
+combinedStream.append(fs.createReadStream('file1.txt'));
+combinedStream.append(fs.createReadStream('file2.txt'));
+
+combinedStream.pipe(fs.createWriteStream('combined.txt'));
 ```
 
-#### bytes(number｜string value, [options]): number｜string｜null
+While the example above works great, it will pause all source streams until
+they are needed. If you don't want that to happen, you can set `pauseStreams`
+to `false`:
 
-Default export function. Delegates to either `bytes.format` or `bytes.parse` based on the type of `value`.
+``` javascript
+var CombinedStream = require('combined-stream');
+var fs = require('fs');
 
-**Arguments**
+var combinedStream = CombinedStream.create({pauseStreams: false});
+combinedStream.append(fs.createReadStream('file1.txt'));
+combinedStream.append(fs.createReadStream('file2.txt'));
 
-| Name    | Type     | Description        |
-|---------|----------|--------------------|
-| value   | `number`｜`string` | Number value to format or string value to parse |
-| options | `Object` | Conversion options for `format` |
-
-**Returns**
-
-| Name    | Type             | Description                                     |
-|---------|------------------|-------------------------------------------------|
-| results | `string`｜`number`｜`null` | Return null upon error. Numeric value in bytes, or string value otherwise. |
-
-**Example**
-
-```js
-bytes(1024);
-// output: '1KB'
-
-bytes('1KB');
-// output: 1024
+combinedStream.pipe(fs.createWriteStream('combined.txt'));
 ```
 
-#### bytes.format(number value, [options]): string｜null
+However, what if you don't have all the source streams yet, or you don't want
+to allocate the resources (file descriptors, memory, etc.) for them right away?
+Well, in that case you can simply provide a callback that supplies the stream
+by calling a `next()` function:
 
-Format the given value in bytes into a string. If the value is negative, it is kept as such. If it is a float, it is
- rounded.
+``` javascript
+var CombinedStream = require('combined-stream');
+var fs = require('fs');
 
-**Arguments**
+var combinedStream = CombinedStream.create();
+combinedStream.append(function(next) {
+  next(fs.createReadStream('file1.txt'));
+});
+combinedStream.append(function(next) {
+  next(fs.createReadStream('file2.txt'));
+});
 
-| Name    | Type     | Description        |
-|---------|----------|--------------------|
-| value   | `number` | Value in bytes     |
-| options | `Object` | Conversion options |
-
-**Options**
-
-| Property          | Type   | Description                                                                             |
-|-------------------|--------|-----------------------------------------------------------------------------------------|
-| decimalPlaces | `number`｜`null` | Maximum number of decimal places to include in output. Default value to `2`. |
-| fixedDecimals | `boolean`｜`null` | Whether to always display the maximum number of decimal places. Default value to `false` |
-| thousandsSeparator | `string`｜`null` | Example of values: `' '`, `','` and `'.'`... Default value to `''`. |
-| unit | `string`｜`null` | The unit in which the result will be returned (B/KB/MB/GB/TB). Default value to `''` (which means auto detect). |
-| unitSeparator | `string`｜`null` | Separator to use between number and unit. Default value to `''`. |
-
-**Returns**
-
-| Name    | Type             | Description                                     |
-|---------|------------------|-------------------------------------------------|
-| results | `string`｜`null` | Return null upon error. String value otherwise. |
-
-**Example**
-
-```js
-bytes.format(1024);
-// output: '1KB'
-
-bytes.format(1000);
-// output: '1000B'
-
-bytes.format(1000, {thousandsSeparator: ' '});
-// output: '1 000B'
-
-bytes.format(1024 * 1.7, {decimalPlaces: 0});
-// output: '2KB'
-
-bytes.format(1024, {unitSeparator: ' '});
-// output: '1 KB'
+combinedStream.pipe(fs.createWriteStream('combined.txt'));
 ```
 
-#### bytes.parse(string｜number value): number｜null
+## API
 
-Parse the string value into an integer in bytes. If no unit is given, or `value`
-is a number, it is assumed the value is in bytes.
+### CombinedStream.create([options])
 
-Supported units and abbreviations are as follows and are case-insensitive:
+Returns a new combined stream object. Available options are:
 
-  * `b` for bytes
-  * `kb` for kilobytes
-  * `mb` for megabytes
-  * `gb` for gigabytes
-  * `tb` for terabytes
-  * `pb` for petabytes
+* `maxDataSize`
+* `pauseStreams`
 
-The units are in powers of two, not ten. This means 1kb = 1024b according to this parser.
+The effect of those options is described below.
 
-**Arguments**
+### combinedStream.pauseStreams = `true`
 
-| Name          | Type   | Description        |
-|---------------|--------|--------------------|
-| value   | `string`｜`number` | String to parse, or number in bytes.   |
+Whether to apply back pressure to the underlaying streams. If set to `false`,
+the underlaying streams will never be paused. If set to `true`, the
+underlaying streams will be paused right after being appended, as well as when
+`delayedStream.pipe()` wants to throttle.
 
-**Returns**
+### combinedStream.maxDataSize = `2 * 1024 * 1024`
 
-| Name    | Type        | Description             |
-|---------|-------------|-------------------------|
-| results | `number`｜`null` | Return null upon error. Value in bytes otherwise. |
+The maximum amount of bytes (or characters) to buffer for all source streams.
+If this value is exceeded, `combinedStream` emits an `'error'` event.
 
-**Example**
+### combinedStream.dataSize = `0`
 
-```js
-bytes.parse('1KB');
-// output: 1024
+The amount of bytes (or characters) currently buffered by `combinedStream`.
 
-bytes.parse('1024');
-// output: 1024
+### combinedStream.append(stream)
 
-bytes.parse(1024);
-// output: 1024
-```
+Appends the given `stream` to the combinedStream object. If `pauseStreams` is
+set to `true, this stream will also be paused right away.
+
+`streams` can also be a function that takes one parameter called `next`. `next`
+is a function that must be invoked in order to provide the `next` stream, see
+example above.
+
+Regardless of how the `stream` is appended, combined-stream always attaches an
+`'error'` listener to it, so you don't have to do that manually.
+
+Special case: `stream` can also be a String or Buffer.
+
+### combinedStream.write(data)
+
+You should not call this, `combinedStream` takes care of piping the appended
+streams into itself for you.
+
+### combinedStream.resume()
+
+Causes `combinedStream` to start drain the streams it manages. The function is
+idempotent, and also emits a `'resume'` event each time which usually goes to
+the stream that is currently being drained.
+
+### combinedStream.pause();
+
+If `combinedStream.pauseStreams` is set to `false`, this does nothing.
+Otherwise a `'pause'` event is emitted, this goes to the stream that is
+currently being drained, so you can use it to apply back pressure.
+
+### combinedStream.end();
+
+Sets `combinedStream.writable` to false, emits an `'end'` event, and removes
+all streams from the queue.
+
+### combinedStream.destroy();
+
+Same as `combinedStream.end()`, except it emits a `'close'` event instead of
+`'end'`.
 
 ## License
 
-[MIT](LICENSE)
-
-[ci-image]: https://badgen.net/github/checks/visionmedia/bytes.js/master?label=ci
-[ci-url]: https://github.com/visionmedia/bytes.js/actions?query=workflow%3Aci
-[coveralls-image]: https://badgen.net/coveralls/c/github/visionmedia/bytes.js/master
-[coveralls-url]: https://coveralls.io/r/visionmedia/bytes.js?branch=master
-[downloads-image]: https://badgen.net/npm/dm/bytes
-[downloads-url]: https://npmjs.org/package/bytes
-[npm-image]: https://badgen.net/npm/v/bytes
-[npm-url]: https://npmjs.org/package/bytes
+combined-stream is licensed under the MIT license.
